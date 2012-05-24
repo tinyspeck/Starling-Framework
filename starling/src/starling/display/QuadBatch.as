@@ -197,16 +197,24 @@ package starling.display
             var pma:Boolean = mVertexData.premultipliedAlpha;
             var context:Context3D = Starling.context;
             var tinted:Boolean = mTinted || (parentAlpha != 1.0);
-            var programName:String = mTexture ? 
-                getImageProgramName(tinted, mTexture.mipMapping, mTexture.repeat, mSmoothing) : 
-                QUAD_PROGRAM_NAME;
             
             sRenderAlpha[0] = sRenderAlpha[1] = sRenderAlpha[2] = pma ? parentAlpha : 1.0;
             sRenderAlpha[3] = parentAlpha;
             
             RenderSupport.setBlendFactors(pma, blendMode ? blendMode : this.blendMode);
+			
+			if (tinted && mTexture)
+			{
+				OuterGlow.instance.setupDrawDependencies(context, mTexture);
+			}
+			else
+			{
+				var programName:String = mTexture ? 
+					getImageProgramName(tinted, mTexture.mipMapping, mTexture.repeat, mSmoothing) : 
+					QUAD_PROGRAM_NAME;
+				context.setProgram(Starling.current.getProgram(programName));
+			}
             
-            context.setProgram(Starling.current.getProgram(programName));
             context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 0, sRenderAlpha, 1);
             context.setProgramConstantsFromMatrix(Context3DProgramType.VERTEX, 1, mvpMatrix, true);
             context.setVertexBufferAt(0, mVertexBuffer, VertexData.POSITION_OFFSET, 

@@ -49,6 +49,7 @@ package starling.events
      *  <code>var touch:Touch = touchEvent.getTouch(this);</code>
      *  
      *  @see Touch
+     *  @see TouchPhase
      */ 
     public class TouchEvent extends Event
     {
@@ -64,9 +65,9 @@ package starling.events
         public function TouchEvent(type:String, touches:Vector.<Touch>, shiftKey:Boolean=false, 
                                    ctrlKey:Boolean=false, bubbles:Boolean=true)
         {
-            super(type, bubbles);
+            super(type, bubbles, touches);
             
-            mTouches = touches ? touches : new <Touch>[];
+            mTouches = touches;
             mShiftKey = shiftKey;
             mCtrlKey = ctrlKey;
             mTimestamp = -1.0;

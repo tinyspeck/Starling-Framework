@@ -10,7 +10,6 @@
 
 package starling.core
 {
-    import flash.display3D.*;
     import flash.geom.*;
     
     import starling.display.*;
@@ -26,7 +25,7 @@ package starling.core
      */
     public class RenderSupport
     {
-        // members        
+        // members
         
         private var mProjectionMatrix:Matrix3D;
         private var mModelViewMatrix:Matrix3D;
@@ -34,14 +33,14 @@ package starling.core
         private var mMatrixStack:Vector.<Matrix3D>;
         private var mMatrixStackSize:int;
         
+        private var mBlendMode:String;
+        private var mBlendModeStack:Vector.<String>;
+        
         private var mQuadBatches:Vector.<QuadBatch>;
         private var mCurrentQuadBatchID:int;
         
         /** Helper object. */
         private static var sMatrixCoords:Vector.<Number> = new Vector.<Number>(16, true);
-		
-		private static var sBlendFactorsInitialized:Boolean = false;
-		private static var sUsingPMA:Boolean = false;
         
         // construction
         
@@ -53,6 +52,9 @@ package starling.core
             mMvpMatrix = new Matrix3D();
             mMatrixStack = new <Matrix3D>[];
             mMatrixStackSize = 0;
+            
+            mBlendMode = BlendMode.NORMAL;
+            mBlendModeStack = new <String>[];
             
             mCurrentQuadBatchID = 0;
             mQuadBatches = new <QuadBatch>[new QuadBatch()];
@@ -75,7 +77,6 @@ package starling.core
         private function onContextCreated(event:Event):void
         {
             mQuadBatches = new <QuadBatch>[new QuadBatch()];
-			sBlendFactorsInitialized = false;
         }
         
         // matrix manipulation
@@ -174,24 +175,57 @@ package starling.core
             if (pivotX != 0 || pivotY != 0) matrix.prependTranslation(-pivotX, -pivotY, 0.0);
         }
         
+        // blending
+        
+        /** Pushes the current blend mode to a stack from which it can be restored later. */
+        public function pushBlendMode():void
+        {
+            mBlendModeStack.push(mBlendMode);
+        }
+        
+        /** Restores the blend mode that was last pushed to the stack. */
+        public function popBlendMode():void
+        {
+            mBlendMode = mBlendModeStack.pop();
+        }
+        
+        /** Clears the blend mode stack and restores NORMAL blend mode. */
+        public function resetBlendMode():void
+        {
+            mBlendModeStack.length = 0;
+            mBlendMode = BlendMode.NORMAL;
+        }
+        
+        /** Activates the appropriate blend factors on the current rendering context. */
+        public function applyBlendMode(premultipliedAlpha:Boolean):void
+        {
+            setBlendFactors(premultipliedAlpha, mBlendMode);
+        }
+        
+        /** The blend mode to be used on rendering. */
+        public function get blendMode():String { return mBlendMode; }
+        public function set blendMode(value:String):void
+        {
+            if (value != BlendMode.AUTO) mBlendMode = value;
+        }
+        
         // optimized quad rendering
         
         /** Adds a quad to the current batch of unrendered quads. If there is a state change,
          *  all previous quads are rendered at once, and the batch is reset. */
-        public function batchQuad(quad:Quad, alpha:Number, 
+        public function batchQuad(quad:Quad, parentAlpha:Number, 
                                   texture:Texture=null, smoothing:String=null):void
         {
-            if (currentQuadBatch.isStateChange(quad, texture, smoothing))
+            if (currentQuadBatch.isStateChange(quad.tinted, parentAlpha, texture, smoothing, mBlendMode))
                 finishQuadBatch();
             
-            currentQuadBatch.addQuad(quad, alpha, texture, smoothing, mModelViewMatrix);
+            currentQuadBatch.addQuad(quad, parentAlpha, texture, smoothing, mModelViewMatrix, mBlendMode);
         }
         
         /** Renders the current quad batch and resets it. */
         public function finishQuadBatch():void
         {
-            currentQuadBatch.syncBuffers();
-            currentQuadBatch.render(mProjectionMatrix, Starling.context);
+            currentQuadBatch.renderCustom(mProjectionMatrix);
             currentQuadBatch.reset();
             
             ++mCurrentQuadBatchID;
@@ -200,10 +234,11 @@ package starling.core
                 mQuadBatches.push(new QuadBatch());
         }
         
-        /** Resets the matrix stack and the quad batch index. */
+        /** Resets the matrix and blend mode stacks, and the quad batch index. */
         public function nextFrame():void
         {
             resetMatrix();
+            resetBlendMode();
             mCurrentQuadBatchID = 0;
         }
         
@@ -214,18 +249,17 @@ package starling.core
         
         // other helper methods
         
-        /** Sets up the default blending factors, depending on the premultiplied alpha status. */
+        /** Deprecated. Call 'setBlendFactors' instead. */
         public static function setDefaultBlendFactors(premultipliedAlpha:Boolean):void
         {
-			if (sBlendFactorsInitialized && sUsingPMA == premultipliedAlpha) return;
-			
-            var destFactor:String = Context3DBlendFactor.ONE_MINUS_SOURCE_ALPHA;
-            var sourceFactor:String = premultipliedAlpha ? Context3DBlendFactor.ONE :
-                                                           Context3DBlendFactor.SOURCE_ALPHA;
-            Starling.context.setBlendFactors(sourceFactor, destFactor);
-			
-			sBlendFactorsInitialized = true;
-			sUsingPMA = premultipliedAlpha;
+            setBlendFactors(premultipliedAlpha);
+        }
+        
+        /** Sets up the blending factors that correspond with a certain blend mode. */
+        public static function setBlendFactors(premultipliedAlpha:Boolean, blendMode:String="normal"):void
+        {
+            var blendFactors:Array = BlendMode.getBlendFactors(blendMode, premultipliedAlpha); 
+            Starling.context.setBlendFactors(blendFactors[0], blendFactors[1]);
         }
         
         /** Clears the render context with a certain color and alpha value. */

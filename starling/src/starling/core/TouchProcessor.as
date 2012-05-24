@@ -8,17 +8,22 @@
 //
 // =================================================================================================
 
-package starling.events
+package starling.core
 {
     import flash.geom.Point;
     
-    import starling.display.DisplayObject;
     import starling.display.Stage;
+    import starling.events.KeyboardEvent;
+    import starling.events.Touch;
+    import starling.events.TouchEvent;
+    import starling.events.TouchPhase;
 
+    use namespace starling_internal;
+    
     /** @private
      *  The TouchProcessor is used internally to convert mouse and touch events of the conventional
      *  Flash stage to Starling's TouchEvents. */
-    public class TouchProcessor
+    internal class TouchProcessor
     {
         private static const MULTITAP_TIME:Number = 0.3;
         private static const MULTITAP_DISTANCE:Number = 25;
@@ -80,11 +85,16 @@ package starling.events
                 sProcessedTouchIDs.length = sHoveringTouchData.length = 0;
                 
                 // update existing touches
-                for each (var currentTouch:Touch in mCurrentTouches)
+                for each (touch in mCurrentTouches)
                 {
                     // set touches that were new or moving to phase 'stationary'
-                    if (currentTouch.phase == TouchPhase.BEGAN || currentTouch.phase == TouchPhase.MOVED)
-                        currentTouch.setPhase(TouchPhase.STATIONARY);
+                    if (touch.phase == TouchPhase.BEGAN || touch.phase == TouchPhase.MOVED)
+                        touch.setPhase(TouchPhase.STATIONARY);
+                    
+                    // check if target is still connected to stage, otherwise find new target
+                    if (touch.target.stage == null)
+                        touch.setTarget(mStage.hitTest(
+                            new Point(touch.globalX, touch.globalY), true));
                 }
                 
                 // process new touches, but each ID only once

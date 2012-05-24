@@ -58,10 +58,12 @@ package starling.display
         /** Creates a moviclip from the provided textures and with the specified default framerate.
          *  The movie will have the size of the first frame. */  
         public function MovieClip(textures:Vector.<Texture>, fps:Number=12)
-        {            
+        {
             if (textures.length > 0)
             {
                 super(textures[0]);
+                if (fps <= 0) throw new ArgumentError("Invalid fps: " + fps);
+                
                 mDefaultFrameDuration = 1.0 / fps;
                 mLoop = true;
                 mPlaying = true;
@@ -98,15 +100,15 @@ package starling.display
             if (frameID < 0 || frameID > numFrames) throw new ArgumentError("Invalid frame id");
             if (duration < 0) duration = mDefaultFrameDuration;
             
-            if (frameID > 0 && frameID == numFrames) 
-                mStartTimes[frameID] = mStartTimes[frameID-1] + mDurations[frameID-1];
-            else
-                updateStartTimes();
-            
             mTextures.splice(frameID, 0, texture);
             mSounds.splice(frameID, 0, sound);
             mDurations.splice(frameID, 0, duration);
             mTotalTime += duration;
+            
+            if (frameID > 0 && frameID == numFrames) 
+                mStartTimes[frameID] = mStartTimes[frameID-1] + mDurations[frameID-1];
+            else
+                updateStartTimes();
         }
         
         /** Removes the frame at a certain ID. The successors will move down. */
@@ -114,10 +116,12 @@ package starling.display
         {
             if (frameID < 0 || frameID >= numFrames) throw new ArgumentError("Invalid frame id");
             if (numFrames == 1) throw new IllegalOperationError("Movie clip must not be empty");
+            
             mTotalTime -= getFrameDuration(frameID);
             mTextures.splice(frameID, 1);
             mSounds.splice(frameID, 1);
             mDurations.splice(frameID, 1);
+            
             updateStartTimes();
         }
         
@@ -206,29 +210,28 @@ package starling.display
         /** @inheritDoc */
         public function advanceTime(passedTime:Number):void
         {
-            if (mLoop && mCurrentTime == mTotalTime) mCurrentTime = 0.0;
+            var finalFrame:int;
+            var previousFrame:int = mCurrentFrame;
+            
+            if (mLoop && mCurrentTime == mTotalTime) { mCurrentTime = 0.0; mCurrentFrame = 0; }
             if (!mPlaying || passedTime == 0.0 || mCurrentTime == mTotalTime) return;
             
             mCurrentTime += passedTime;
-            
-            var numFrames:int = mTextures.length;
-            var previousFrame:int = mCurrentFrame;
+            finalFrame = mTextures.length - 1;
             
             while (mCurrentTime >= mStartTimes[mCurrentFrame] + mDurations[mCurrentFrame])
             {
-                if (++mCurrentFrame == numFrames)
+                if (mCurrentFrame == finalFrame)
                 {
                     if (hasEventListener(Event.COMPLETE))
                     {
-                        dispatchEvent(new Event(Event.COMPLETE));
+                        var restTime:Number = mCurrentTime - mTotalTime;
+                        mCurrentTime = mTotalTime;
+                        dispatchEventWith(Event.COMPLETE);
                         
-                        // user might have stopped movie in event handler
-                        if (!mPlaying)
-                        {
-                            mCurrentTime = mTotalTime;
-                            mCurrentFrame = numFrames - 1;
-                            break;
-                        }
+                        // user might have changed movie clip settings, so we restart the method
+                        advanceTime(restTime);
+                        return;
                     }
                     
                     if (mLoop)
@@ -239,17 +242,20 @@ package starling.display
                     else
                     {
                         mCurrentTime = mTotalTime;
-                        mCurrentFrame = numFrames - 1;
                         break;
                     }
+                }
+                else
+                {
+                    mCurrentFrame++;
+                    
+                    var sound:Sound = mSounds[mCurrentFrame];
+                    if (sound) sound.play();
                 }
             }
             
             if (mCurrentFrame != previousFrame)
-            {
                 texture = mTextures[mCurrentFrame];
-                if (mSounds[mCurrentFrame]) mSounds[mCurrentFrame].play();
-            }
         }
         
         /** Indicates if a (non-looping) movie has come to its end. */
@@ -290,7 +296,9 @@ package starling.display
         public function get fps():Number { return 1.0 / mDefaultFrameDuration; }
         public function set fps(value:Number):void
         {
-            var newFrameDuration:Number = value == 0.0 ? Number.MAX_VALUE : 1.0 / value;
+            if (value <= 0) throw new ArgumentError("Invalid fps: " + value);
+            
+            var newFrameDuration:Number = 1.0 / value;
             var acceleration:Number = newFrameDuration / mDefaultFrameDuration;
             mCurrentTime *= acceleration;
             mDefaultFrameDuration = newFrameDuration;
